@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Surabaya - Crayon Case</title>
+
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    overflow:hidden;
+    min-height:100vh;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(to bottom, #020408, #050814, #0d0b18);
+    position: relative;
+}
+
+/* --- CANVAS LAYER MANAGEMENT --- */
+#bokehCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+#rainCanvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 4;
+}
+
+#lightningOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0);
+    pointer-events: none;
+    z-index: 5;
+    transition: background 0.05s ease-out;
+}
+
+/* --- CINEMATIC CITYSCAPE --- */
+.cityscape {
+    position: absolute;
+    bottom: 50px; /* Di atas jalan raya */
+    left: 0;
+    width: 100%;
+    height: 50vh;
+    z-index: 2;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 5px;
+    pointer-events: none;
+}
+
+.building {
+    flex: 1;
+    margin: 0 6px;
+    background-color: #0b0d19;
+    border-radius: 6px 6px 0 0;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    border-left: 1px solid rgba(255,255,255,0.03);
+    border-right: 1px solid rgba(255,255,255,0.03);
+    cursor: pointer;
+    pointer-events: auto;
+    position: relative;
+    transition: transform 0.3s ease, filter 0.3s;
+    box-shadow: inset 0 15px 25px rgba(0,0,0,0.9);
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(8px, 1fr));
+    grid-auto-rows: 12px;
+    gap: 6px;
+    padding: 15px 8px;
+    overflow: hidden;
+}
+
+.building:hover {
+    transform: translateY(-8px);
+    filter: brightness(1.15);
+}
+
+/* Jendela Gedung Realistis */
+.window {
+    background: transparent;
+    border-radius: 1px;
+    transition: background 0.5s ease;
+}
+.window.lit-warm { background: rgba(255, 210, 110, 0.75); box-shadow: 0 0 6px rgba(255, 210, 110, 0.5); }
+.window.lit-cool { background: rgba(160, 230, 255, 0.7); box-shadow: 0 0 6px rgba(160, 230, 255, 0.4); }
+
+/* Tinggi Gedung Beragam */
+.h-tall { height: 48vh; }
+.h-med { height: 36vh; }
+.h-short { height: 25vh; }
+.h-grand { height: 53vh; }
+
+/* Efek Sengatan Neon Kilat Gedung saat Diklik */
+.building.building-flash {
+    animation: neonShortCircuit 0.5s linear forwards;
+}
+
+@keyframes neonShortCircuit {
+    0%, 100% { filter: brightness(1); }
+    10%, 30%, 70% { 
+        filter: brightness(4) contrast(1.5);
+        background-color: #26335e;
+        box-shadow: 0 0 40px rgba(0, 200, 255, 0.6);
+    }
+    20%, 50% { filter: brightness(0.5); background-color: #05050a; }
+}
+
+/* --- REALISTIC WET HIGHWAY & CARS --- */
+.highway {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 55px;
+    background: linear-gradient(to bottom, #07070d, #030305);
+    border-top: 3px solid #111424;
+    z-index: 3;
+    overflow: hidden;
+    box-shadow: inset 0 10px 20px rgba(0,0,0,0.8);
+}
+
+/* Lapisan Pantulan Basah */
+.wet-reflection {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(rgba(255,255,255,0.01), transparent);
+    mix-blend-mode: screen;
+    pointer-events: none;
+}
+
+.lane {
+    position: absolute;
+    width: 100%;
+    height: 50%;
+    display: flex;
+    align-items: center;
+}
+.lane-top { top: 0; border-bottom: 1px dashed rgba(255,255,255,0.05); }
+.lane-bottom { bottom: 0; }
+
+/* Struktur Grafis Mobil CSS Realistis */
+.car-body {
+    position: absolute;
+    width: 48px;
+    height: 14px;
+    background: #090b11;
+    border-radius: 4px 9px 3px 3px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+}
+
+/* Mobil Bergerak ke Kanan (Lampu Depan Aktif) */
+.move-right-container {
+    position: absolute;
+    width: 48px;
+    height: 14px;
+    animation: driveRight 12s linear infinite;
+}
+.move-right-container .car-body::after {
+    content: '';
+    position: absolute;
+    right: -45px; top: -5px;
+    width: 45px; height: 24px;
+    background: linear-gradient(to right, rgba(255, 253, 214, 0.35), transparent);
+    clip-path: polygon(0 30%, 100% 0, 100% 100%, 0 70%);
+    pointer-events: none;
+}
+.move-right-container .car-body::before {
+    content: '';
+    position: absolute;
+    left: -1px; top: 3px;
+    width: 3px; height: 3px;
+    background: #ff3333;
+    box-shadow: 0 0 6px #ff3333;
+}
+
+/* Mobil Bergerak ke Kiri (Lampu Belakang Aktif) */
+.move-left-container {
+    position: absolute;
+    width: 48px;
+    height: 14px;
+    animation: driveLeft 15s linear infinite;
+}
+.move-left-container .car-body {
+    border-radius: 9px 4px 3px 3px;
+}
+.move-left-container .car-body::after {
+    content: '';
+    position: absolute;
+    left: -2px; top: 3px;
+    width: 3px; height: 3px;
+    background: #ff2222;
+    box-shadow: 0 0 8px #ff2222;
+}
+.move-left-container .car-body::before {
+    content: '';
+    position: absolute;
+    left: 45px; top: -4px;
+    width: 40px; height: 22px;
+    background: linear-gradient(to left, rgba(255, 255, 255, 0.15), transparent);
+    clip-path: polygon(100% 30%, 0 0, 0 100%, 100% 70%);
+    pointer-events: none;
+}
+
+@keyframes driveRight { 0% { left: -80px; } 100% { left: 105%; } }
+@keyframes driveLeft { 0% { right: -80px; } 100% { right: 105%; } }
+
+/* Variasi jeda melaju */
+.d1 { animation-delay: 0s; animation-duration: 11s; }
+.d2 { animation-delay: 3s; animation-duration: 14s; }
+.d3 { animation-delay: 6s; animation-duration: 9s; }
+.d4 { animation-delay: 2s; animation-duration: 16s; }
+.d5 { animation-delay: 8s; animation-duration: 12s; }
+
+/* --- MUSIC PLAYER INTERFACE --- */
+.container{
+    perspective:1200px;
+    z-index: 10;
+    margin-bottom: 5px;
+}
+
+.card{
+    position:relative;
+    transform-style:preserve-3d;
+    transition:transform .15s;
+}
+
+.card img{
+    width: 290px;
+    max-width:75vw;
+    border-radius:25px;
+    cursor:pointer;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.7);
+    animation: floating 5s ease-in-out infinite, appear 1.5s ease;
+    transition:.3s;
+}
+
+/* Sinar Cahaya Pinggiran Berdenyut Hebat */
+.card.album-glow-pulse {
+    animation: albumGlowPulseAnim 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes albumGlowPulseAnim {
+    0% { box-shadow: 0 0 0px transparent; transform: scale(1); }
+    30% { 
+        box-shadow: 
+            0 0 25px rgba(255, 255, 255, 0.9), 
+            0 0 50px rgba(0, 195, 255, 0.8), 
+            0 0 90px rgba(0, 102, 255, 0.5); 
+        transform: scale(1.04);
+    }
+    100% { box-shadow: 0 20px 50px rgba(0,0,0,0.7); transform: scale(1); }
+}
+
+.glow{
+    position:absolute;
+    inset:-30px;
+    z-index:-1;
+    background:radial-gradient(circle, rgba(255,255,255,0.12), transparent 70%);
+    filter:blur(40px);
+    animation:pulse 4s infinite;
+}
+
+@keyframes pulse{ 50%{ transform:scale(1.1); opacity:.5; } }
+@keyframes floating{ 50%{ transform:translateY(-10px); } }
+@keyframes appear{ from{ opacity:0; transform:scale(.6); } to{ opacity:1; transform:scale(1); } }
+
+h1{
+    color:white;
+    margin-top:15px;
+    letter-spacing:5px;
+    animation:blink 2.5s infinite;
+    z-index: 10;
+    text-shadow: 0 0 15px rgba(255,255,255,0.4);
+    font-size: 26px;
+    font-weight: 600;
+}
+
+@keyframes blink{ 50%{ opacity:.7; } }
+
+.controls-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 290px;
+    max-width: 75vw;
+    margin-top: 15px;
+    z-index: 10;
+    gap: 12px;
+}
+
+.playback-bar {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: rgba(255,255,255,0.8);
+    font-size: 11px;
+}
+
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 5px;
+    outline: none;
+    cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 0 8px white;
+}
+
+.volume-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: white;
+    font-size: 13px;
+    width: 55%;
+}
+
+#playBtn{
+    padding: 12px 35px;
+    border: none;
+    border-radius: 50px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    background: white;
+    color: black;
+    box-shadow: 0 4px 15px rgba(255,255,255,0.25);
+    transition: .3s;
+}
+
+#playBtn:hover{
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(255,255,255,0.5);
+}
+
+.visualizer{
+    display:flex;
+    gap:5px;
+    margin-top:15px;
+    height:40px;
+    align-items:flex-end;
+    z-index: 10;
+}
+
+.bar {
+    width:5px;
+    height:8px;
+    background:rgba(255, 255, 255, 0.75);
+    border-radius:10px;
+    transition: height 0.1s ease;
+}
+
+.spark{
+    position:absolute;
+    font-size:28px;
+    pointer-events:none;
+    z-index: 50;
+    animation:explode 0.9s cubic-bezier(0.1, 0.8, 0.3, 1) forwards;
+}
+
+@keyframes explode{
+    from{ opacity:1; transform:translate(0,0) scale(1); }
+    to{ opacity:0; transform: translate(var(--x),var(--y)) scale(1.8) rotate(270deg); }
+}
+
+/* Watermark */
+.watermark {
+    position: fixed;
+    bottom: 65px; 
+    right: 25px;
+    color: rgba(255, 255, 255, 0.3);
+    font-family: monospace;
+    font-size: 13px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    z-index: 100;
+    pointer-events: none;
+}
+</style>
+</head>
+
+<body>
+
+<!-- Efek Ambient & Cuaca -->
+<canvas id="bokehCanvas"></canvas>
+<canvas id="rainCanvas"></canvas>
+<div id="lightningOverlay"></div>
+
+<!-- Watermark -->
+<div class="watermark">By RIZZ_56</div>
+
+<!-- HD Cityscape Silhouette -->
+<div class="cityscape" id="cityscape">
+    <div class="building h-tall"></div>
+    <div class="building h-med"></div>
+    <div class="building h-grand"></div>
+    <div class="building h-short"></div>
+    <div class="building h-tall"></div>
+    <div class="building h-med"></div>
+    <div class="building h-grand"></div>
+    <div class="building h-short"></div>
+</div>
+
+<!-- Wet Highway & Realistic Graphic Cars -->
+<div class="highway">
+    <div class="wet-reflection"></div>
+    <div class="lane lane-top">
+        <div class="move-right-container d1"><div class="car-body"></div></div>
+        <div class="move-right-container d3"><div class="car-body"></div></div>
+        <div class="move-right-container d5"><div class="car-body"></div></div>
+    </div>
+    <div class="lane lane-bottom">
+        <div class="move-left-container d2"><div class="car-body"></div></div>
+        <div class="move-left-container d4"><div class="car-body"></div></div>
+    </div>
+</div>
+
+<!-- Player Hub -->
+<div class="container">
+    <div class="card" id="card">
+        <div class="glow"></div>
+        <img
+        id="album"
+        src="https://s.mxmcdn.net/images-storage/albums2/1/3/7/1/0/1/92101731_500_500.jpg"
+        alt="Surabaya">
+    </div>
+</div>
+
+<h1>🌧 SURABAYA 🌧</h1>
+
+<div class="controls-container">
+    <button id="playBtn">🎵 PUTAR MUSIK</button>
+    
+    <div class="playback-bar">
+        <span id="currTime">00:00</span>
+        <input type="range" id="seekBar" value="0" min="0" max="100">
+        <span id="durTime">00:00</span>
+    </div>
+
+    <div class="volume-container">
+        🔊 <input type="range" id="volBar" value="100" min="0" max="100">
+    </div>
+</div>
+
+<div class="visualizer">
+    <div class="bar"></div>
+    <div class="bar"></div>
+    <div class="bar"></div>
+    <div class="bar"></div>
+    <div class="bar"></div>
+    <div class="bar"></div>
+    <div class="bar"></div>
+    <div class="bar"></div>
+</div>
+
+<audio id="bgm" loop>
+    <source src="Crayon Case - Surabaya.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+// Generate Jendela Gedung Realistis via JS Engine
+const buildings = document.querySelectorAll('.building');
+buildings.forEach(building => {
+    // Tentukan jumlah jendela berdasarkan ukuran kontainer gedung asli
+    const numWindows = 45; 
+    for(let i=0; i<numWindows; i++) {
+        const win = document.createElement('div');
+        win.className = 'window';
+        
+        // Pengaturan acak lampu jendela kota malam
+        const rand = Math.random();
+        if (rand > 0.85) {
+            win.classList.add('lit-warm');
+        } else if (rand > 0.73) {
+            win.classList.add('lit-cool');
+        }
+        building.appendChild(win);
+    }
+
+    // Event Klik Gedung: Mengeluarkan Setruman Kilatan Cahaya Neon
+    building.addEventListener('click', (e) => {
+        building.classList.add('building-flash');
+        setTimeout(() => { building.classList.remove('building-flash'); }, 500);
+    });
+});
+
+// 3D Parallax Perspective Card Effect
+const card = document.getElementById("card");
+document.addEventListener("mousemove",(e)=>{
+    const x = (window.innerWidth/2 - e.clientX)/35;
+    const y = (window.innerHeight/2 - e.clientY)/35;
+    card.style.transform= `rotateY(${-x}deg) rotateX(${y}deg)`;
+});
+
+// Interaksi Album Klik: Meledakkan Emoji & Mengaktifkan Sinar Cahaya Pinggiran
+const img = document.getElementById("album");
+const cardWrapper = document.getElementById("card");
+
+img.addEventListener("click",(e)=>{
+    const emoji=["✨","⭐","🌧","🎵","🎶","⚡","🌃"];
+    for(let i=0; i<20; i++){
+        let spark = document.createElement("div");
+        spark.className="spark";
+        spark.innerHTML= emoji[Math.floor(Math.random()*emoji.length)];
+        spark.style.left= e.pageX+"px";
+        spark.style.top= e.pageY+"px";
+        spark.style.setProperty("--x", (Math.random()*360-180)+"px");
+        spark.style.setProperty("--y", (Math.random()*360-180)+"px");
+        document.body.appendChild(spark);
+        setTimeout(()=>{ spark.remove(); }, 900);
+    }
+
+    cardWrapper.classList.add('album-glow-pulse');
+    setTimeout(() => { cardWrapper.classList.remove('album-glow-pulse'); }, 800);
+});
+
+// Audio Controller Core
+const music = document.getElementById("bgm");
+const btn = document.getElementById("playBtn");
+const seekBar = document.getElementById("seekBar");
+const volBar = document.getElementById("volBar");
+const currTimeEle = document.getElementById("currTime");
+const durTimeEle = document.getElementById("durTime");
+
+btn.onclick=()=>{
+    if(music.paused){
+        music.play();
+        btn.innerHTML = "⏸ PAUSE MUSIK";
+    } else {
+        music.pause();
+        btn.innerHTML = "🎵 PUTAR MUSIK";
+    }
+};
+
+music.addEventListener("timeupdate", () => {
+    if (!isNaN(music.duration)) {
+        const value = (music.currentTime / music.duration) * 100;
+        seekBar.value = value;
+        
+        let curMins = Math.floor(music.currentTime / 60);
+        let curSecs = Math.floor(music.currentTime % 60);
+        let durMins = Math.floor(music.duration / 60);
+        let durSecs = Math.floor(music.duration % 60);
+        
+        if(curSecs < 10) curSecs = "0" + curSecs;
+        if(durSecs < 10) durSecs = "0" + durSecs;
+        
+        currTimeEle.innerHTML = curMins + ":" + curSecs;
+        durTimeEle.innerHTML = durMins + ":" + durSecs;
+    }
+});
+
+seekBar.addEventListener("input", () => {
+    const time = (seekBar.value / 100) * music.duration;
+    music.currentTime = time;
+});
+
+volBar.addEventListener("input", () => {
+    music.volume = volBar.value / 100;
+});
+
+// Album Beat Pulse
+setInterval(()=>{
+    if(!music.paused){
+        img.style.transform= "scale(1.03)";
+        setTimeout(()=>{ img.style.transform= "scale(1)"; }, 220);
+    }
+}, 500);
+
+// Visualizer Equalizer Irama
+const bars= document.querySelectorAll(".bar");
+setInterval(()=>{
+    bars.forEach(bar=>{
+        if(!music.paused){
+            bar.style.height= Math.random()*32+8+"px";
+            bar.style.background = "rgba(255,255,255,0.9)";
+        } else {
+            bar.style.height= "6px";
+            bar.style.background = "rgba(255,255,255,0.3)";
+        }
+    });
+},120);
+
+// --- CANVAS LENTERA KOTA JAUH (BOKEH BACKGROUND ENGINE) ---
+const bCanvas = document.getElementById('bokehCanvas');
+const bCtx = bCanvas.getContext('2d');
+let bw, bh;
+const lights = [];
+
+function resizeBokeh() {
+    bw = bCanvas.width = window.innerWidth;
+    bh = bCanvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeBokeh);
+resizeBokeh();
+
+// Titik lampu bokeh kota
+for(let i=0; i<40; i++) {
+    lights.push({
+        x: Math.random() * bw,
+        y: Math.random() * (bh * 0.65) + (bh * 0.2), // berpusat di area perkotaan
+        radius: Math.random() * 15 + 8,
+        color: Math.random() > 0.5 ? 'rgba(255, 200, 100, 0.08)' : 'rgba(120, 210, 255, 0.07)',
+        pulseSpeed: Math.random() * 0.02 + 0.005,
+        alpha: Math.random()
+    });
+}
+
+function drawBokeh() {
+    bCtx.clearRect(0,0,bw,bh);
+    for(let i=0; i<lights.length; i++) {
+        let l = lights[i];
+        l.alpha += l.pulseSpeed;
+        let currentOpacity = (Math.sin(l.alpha) + 1) / 2 * 0.1; 
+        
+        bCtx.beginPath();
+        bCtx.arc(l.x, l.y, l.radius, 0, Math.PI * 2);
+        bCtx.fillStyle = l.color.replace('0.08', currentOpacity).replace('0.07', currentOpacity);
+        bCtx.fill();
+    }
+    requestAnimationFrame(drawBokeh);
+}
+drawBokeh();
+
+// --- CANVAS HUJAN REALISTIS (RAIN ENGINE) ---
+const canvas = document.getElementById('rainCanvas');
+const ctx = canvas.getContext('2d');
+let w, h;
+const maxDrops = 140;
+const drops = [];
+
+function resizeCanvas() {
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+for (let i = 0; i < maxDrops; i++) {
+    drops.push({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        length: Math.random() * 22 + 8,
+        speed: Math.random() * 4 + 5
+    });
+}
+
+function drawRain() {
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(160, 190, 220, 0.18)';
+    ctx.lineWidth = 1.2;
+    ctx.lineCap = 'round';
+    
+    const globalSpeed = music.paused ? 0.5 : 1.5;
+    const activeDrops = music.paused ? Math.floor(maxDrops / 2.5) : maxDrops;
+
+    for (let i = 0; i < activeDrops; i++) {
+        const p = drops[i];
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + (p.speed * 0.04), p.y + p.length);
+        ctx.stroke();
+
+        p.y += p.speed * globalSpeed;
+        p.x += (p.speed * 0.04) * globalSpeed;
+
+        if (p.y > h - 50) { // Reset sebelum menyentuh jalan raya
+            p.y = -p.length;
+            p.x = Math.random() * w;
+        }
+    }
+    requestAnimationFrame(drawRain);
+}
+drawRain();
+
+// Efek Petir Global Langit Malam
+function triggerLightning() {
+    if (!music.paused) {
+        const lightning = document.getElementById('lightningOverlay');
+        const intensity = Math.random() * 0.5 + 0.1;
+        
+        lightning.style.background = `rgba(235, 245, 255, ${intensity})`;
+        
+        setTimeout(() => {
+            lightning.style.background = 'rgba(255, 255, 255, 0)';
+            
+            setTimeout(() => {
+                if (Math.random() > 0.5) {
+                    lightning.style.background = `rgba(235, 245, 255, ${intensity * 0.4})`;
+                    setTimeout(() => { lightning.style.background = 'rgba(255, 255, 255, 0)'; }, 60);
+                }
+            }, 80);
+        }, 60);
+    }
+    setTimeout(triggerLightning, Math.random() * 8000 + 4000);
+}
+setTimeout(triggerLightning, 3000);
+</script>
+
+</body>
+</html>
